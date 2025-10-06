@@ -12,7 +12,12 @@ from fastapi.responses import StreamingResponse
 import base64
 import io
 from pydantic import BaseModel, Field
-from utils.model_func import load_yolo_model, load_lstm_model, blur_detections
+from utils.model_func import (
+    load_yolo_model,
+    load_lstm_model,
+    blur_detections,
+    text_to_indices,
+)
 
 
 logger = logging.getLogger("uvicorn.info")
@@ -29,23 +34,12 @@ class TextResponse(BaseModel):
     prob: float  # вероятность, связанная с меткой
 
 
-# Определение класса ответа для детекции одного оъекта на изображении
-# class Detection(BaseModel):
-#     """
-#     Описывает один обнаруженный объект на изображении.
-#     """
-
-#     box: List[int] = Field(
-#         ..., description="Координаты рамки в формате [x1, y1, x2, y2]"
-#     )
-#     label: str = Field(..., description="Метка класса объекта")
-#     confidence: float = Field(..., description="Уверенность модели в детекции")
-
-
 # Определение класса ответа для детекции всех лиц на изображении
 class ImageResponse(BaseModel):
     faces_count: int = Field(..., description="Количество обнаруженных лиц")
-    blurred_image_base64: str = Field(..., description="Изображение с блюром в формате base64")
+    blurred_image_base64: str = Field(
+        ..., description="Изображение с блюром в формате base64"
+    )
 
 
 yolo_model = None  # глобальная переменная для yolo модели
@@ -104,12 +98,35 @@ def detection_image(file: UploadFile):
     buf = io.BytesIO()
     blurred.save(buf, format="JPEG")
     # buf.seek(0)
+    # return StreamingResponse(buf, media_type="image/jpeg")
     img_base64 = base64.b64encode(buf.getvalue()).decode("utf-8")
     # Формирование ответа
-    response = ImageResponse(
-        faces_count=faces_count,
-        blurred_image_base64=img_base64
-    )
+    response = ImageResponse(faces_count=faces_count, blurred_image_base64=img_base64)
+    return response
+
+
+@app.post("/clf_text")
+def clf_text(text: TextInput):
+    """
+    Endpoint для классификации текста.
+    Определяет positive/negative класс отзыва и вероятность на данных, полученных из кастомной модели LSTM+W2V+BahdanauAttention
+    """
+    # препроцессинг текста
+    x = text_to_indices(text.text)
+    # Предсказания моделей
+    with torch.no_grad():
+        logits, _ = lstm_model(x)
+        prob_positive = torch.sigmoid(
+            logits
+        ).item()  # вероятность положительного класса
+    # prob_positive = torch.sigmoid(logits)
+    # вероятность отрицательного класса
+    prob_negative = 1 - prob_positive
+    # итоговые значения предсказаний
+    pred_class = "positive" if prob_positive >= 0.5 else "negative"
+    probability = prob_positive if pred_class == "positive" else prob_negative
+    #
+    response = TextResponse(label=pred_class, prob=round(probability, 4))
     return response
 
 

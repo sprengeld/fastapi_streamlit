@@ -1,10 +1,17 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
+from typing import Tuple
+from utils.prepare_embedding import load_embedding_from_w2v
 
 
 # --- Параметры, с которыми модель была создана и обучена ---
 HIDDEN_SIZE = 32
 SEQ_LEN = 64
+EMBEDDING_DIM = 64
+# Загрузка модели эмбеддинга
+embedding_layer = load_embedding_from_w2v("../api/weights/word2vec.model", "../api/weights/vocab.pkl", embedding_dim=EMBEDDING_DIM)
+
 
 class BahdanauAttention(nn.Module):
   def __init__(

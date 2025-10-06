@@ -2,6 +2,8 @@ from ultralytics import YOLO
 import torch
 import os
 from PIL import Image, ImageDraw, ImageFilter
+from utils.LSTM_model import LSTMWord2VecBahdanauAttention
+from utils.prepare_embedding import preprocess_single_string, load_vocab
 
 
 def load_yolo_model():
@@ -38,4 +40,22 @@ def load_lstm_model():
     """
     Returns custom model based on LSTM with word2vec embedding and Bahdanau Attention
     """
-    pass
+    model = LSTMWord2VecBahdanauAttention()
+    model.load_state_dict(torch.load("../api/weights/LSTM_w2v_epoch_5.pth"))
+    model.eval()
+    return model
+
+
+SEQ_LEN = 64
+vocab_to_int = load_vocab("../api/weights/vocab.pkl")
+
+def text_to_indices(text: str):
+    # препроцессинг текста
+    prep_text = preprocess_single_string(text, SEQ_LEN, vocab_to_int)
+    # Приводим к типу Long для embedding
+    prep_text = prep_text.long()
+    # Добавляем batch dimension: (1, seq_len)
+    prep_text = prep_text.unsqueeze(0)
+    return prep_text
+
+
